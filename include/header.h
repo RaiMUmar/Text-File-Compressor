@@ -1,3 +1,6 @@
+#ifndef HEADER_H
+#define HEADER_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,6 +26,7 @@ typedef struct DecodeNode {
     struct DecodeNode *zero, *one;
 } DecodeNode;
 
+DecodeNode* createNode(void);
 int readFile(const char *fileName, Node **node, int *count);
 int writeFile(const char *fileName, Node *node);
 int writeHeader(const char *fileName, Node *root);
@@ -31,7 +35,9 @@ int sortNodes(const void *a, const void *b);
 void assignBit(Node *node, char ***codes, char **characters, int *size);
 void collectHeaderInfo(Node *node, HeaderInfo **arr, int *count, int *capacity);
 void findNode(Node *node, char character, char foundBits[100]);
-static void insertCode(DecodeNode *root, unsigned char *codeData, uint8_t codeLen, char character);
-static void freeTrie(DecodeNode *root);
+void insertCode(DecodeNode *root, unsigned char *codeData, uint8_t codeLen, char character);
+void freeTrie(DecodeNode *root);
 int compressFile(const char *inputFile);
 int decompressFile(const char *inFile, const char *outFile);
+
+#endif // HEADER_H
