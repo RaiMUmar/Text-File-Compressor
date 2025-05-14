@@ -76,44 +76,33 @@ int main(void) {
     return 0;
 }
 
+/* Read File and save characters along with their frequency */
 int readFile(const char *fileName, Node **node, int *count){
-    int found;
-    char word[100];
+    FILE *fptr = fopen(fileName, "rb");    // open in binary so we get '\n' exactly
+    if (!fptr) return -1;
 
-    FILE* fptr = fopen(fileName, "r");
-    if (fptr == NULL){
-        return -1; // File not found
-    }
-
-    while (fscanf(fptr, "%s", word) == 1) {
-        for (int i = 0; i < strlen(word); i++){
-            found = 0;
-            for (int j = 0; j < *count; j++){
-                if (word[i] == (*node)[j].character){
-                    (*node)[j].frequency++;
-                    (*node)[j].nodeValue++;
-                    found = 1;
-                    break;
-                }
-            }
-            if (!found){
-                Node *nodeTemp = realloc(*node, sizeof(Node) * (*count + 1));
-                if (nodeTemp == NULL){
-                    fclose(fptr);
-                    free(nodeTemp);
-                    return -1; // Realloc Failure
-                }
-                *node = nodeTemp;
-                (*node)[*count].character = word[i];
-                (*node)[*count].frequency = 1;
-                (*node)[*count].nodeValue = 1;
-                (*node)[*count].left = NULL;
-                (*node)[*count].right = NULL;
-                (*count)++;
+    int c;
+    while ((c = fgetc(fptr)) != EOF) {
+        char ch = (char)c;
+        int found = 0;
+        for (int j = 0; j < *count; j++) {
+            if ((*node)[j].character == ch) {
+                (*node)[j].frequency++;
+                (*node)[j].nodeValue++;
+                found = 1;
+                break;
             }
         }
-        (*node)[0].frequency++;
-        (*node)[0].nodeValue++;
+        if (!found) {
+            Node *tmp = realloc(*node, sizeof(Node) * (*count + 1));
+            if (!tmp) { fclose(fptr); return -1; }
+            *node = tmp;
+            (*node)[*count].character = ch;
+            (*node)[*count].frequency = 1;
+            (*node)[*count].nodeValue = 1;
+            (*node)[*count].left = (*node)[*count].right = NULL;
+            (*count)++;
+        }
     }
     fclose(fptr);
     return 1;
@@ -291,7 +280,7 @@ int writeHeader(const char *fileName, Node *root) {
         offset += headers[i].recordSize;
     }
     
-    // Open the file for writing. (Note: if writeFile() later writes compressed data, it should open the file in append mode.)
+    // Open the file for writing
     FILE *fp = fopen("compressedFile.db", "wb");
     if (!fp) {
         printf("File open failure in writeHeader\n");
@@ -337,57 +326,37 @@ int writeHeader(const char *fileName, Node *root) {
     return 1;
 }
 
-
+/* Write into new file */
 int writeFile(const char *fileName, Node *node){
-    char ch, foundBits[100];
-    int flag;
-
-    FILE *readFile = fopen(fileName, "r");
-    FILE *writeFile = fopen("compressedFile.db", "ab"); // Open in binary write mode.
-    if (readFile == NULL || writeFile == NULL){
-        printf("File Error!\n");
+    FILE *readFile  = fopen(fileName, "rb"); // binary mode again
+    FILE *writeFile = fopen("compressedFile.db", "ab");
+    if (!readFile || !writeFile) {
+        if (readFile) fclose(readFile);
+        if (writeFile) fclose(writeFile);
         return -1;
     }
 
     unsigned char buffer = 0;
     int bitCount = 0;
+    int c;
+    char foundBits[100];
 
-    while ((ch = fgetc(readFile)) != EOF) {
-        // Find the Huffman bit string for this character.
-        findNode(node, ch, foundBits);
-        
-        // Process each bit in the Huffman code.
-        for (int i = 0; i < strlen(foundBits); i++){
-            // Convert '0' or '1' to a bit (0 or 1) and shift into buffer.
+    while ((c = fgetc(readFile)) != EOF) {
+        findNode(node, (char)c, foundBits);
+        for (int i = 0; foundBits[i]; i++) {
             buffer = (buffer << 1) | (foundBits[i] - '0');
-            bitCount++;
-            
-            // When we've accumulated 8 bits, write the byte to the file.
-            if (bitCount == 8) {
-                flag = fwrite(&buffer, sizeof(unsigned char), 1, writeFile);
-                if (flag != 1){
-                    fclose(readFile);
-                    fclose(writeFile);
-                    printf("Write Failure\n");
-                    return -1;
-                }
-                // Reset for the next byte.
+            if (++bitCount == 8) {
+                fwrite(&buffer,1,1,writeFile);
                 bitCount = 0;
                 buffer = 0;
             }
         }
     }
 
-    // If there are remaining bits in the buffer, pad them with zeros.
-    if (bitCount > 0){
-        buffer <<= (8 - bitCount);  // pad with zeros on the right.
-        flag = fwrite(&buffer, sizeof(unsigned char), 1, writeFile);
-        if (flag != 1){
-            fclose(readFile);
-            fclose(writeFile);
-            printf("Write Failure\n");
-            return -1;
-        }
+    // flush leftover bits
+    if (bitCount > 0) {
+        buffer <<= (8 - bitCount);
+        fwrite(&buffer,1,1,writeFile);
     }
 
     fclose(readFile);
