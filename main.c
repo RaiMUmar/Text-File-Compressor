@@ -1,27 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
-
-typedef struct Node {
-    char character;
-    int frequency, nodeValue;
-    struct Node *left, *right;
-    char bits[100];
-} Node;
-
-typedef struct {
-    char character;
-    uint8_t codeLen;               // Number of bits in the Huffman code.
-    unsigned char codeData[13];    // Enough to store up to 100 bits (ceil(100/8)=13).
-    uint16_t recordSize;           // Total size of this record (1 + 2 + 1 + numCodeBytes).
-    uint16_t nextOffset;           // Offset (from the start of the header) to the next record.
-} HeaderInfo;
-
-typedef struct DecodeNode {
-    char character;
-    struct DecodeNode *zero, *one;
-} DecodeNode;
+#include "./headers/header.h"
 
 static DecodeNode* createNode(void) {
     DecodeNode *n = calloc(1, sizeof *n);
@@ -29,20 +6,7 @@ static DecodeNode* createNode(void) {
     return n;
 }
 
-int readFile(const char *fileName, Node **node, int *count);
-int writeFile(const char *fileName, Node *node);
-int writeHeader(const char *fileName, Node *root);
-int huffmanTree(Node **node, int count);
-int sortNodes(const void *a, const void *b);
-void assignBit(Node *node, char ***codes, char **characters, int *size);
-void collectHeaderInfo(Node *node, HeaderInfo **arr, int *count, int *capacity);
-void findNode(Node *node, char character, char foundBits[100]);
-static void insertCode(DecodeNode *root, unsigned char *codeData, uint8_t codeLen, char character);
-static void freeTrie(DecodeNode *root);
-int compressFile(const char *inputFile);
-int decompressFile(const char *inFile, const char *outFile);
-
-
+/* Main Function */
 int main(void) {
     char choice;
     char inName[256], outName[256];
@@ -78,7 +42,7 @@ int main(void) {
 
 /* Read File and save characters along with their frequency */
 int readFile(const char *fileName, Node **node, int *count){
-    FILE *fptr = fopen(fileName, "rb");    // open in binary so we get '\n' exactly
+    FILE *fptr = fopen(fileName, "rb");    
     if (!fptr) return -1;
 
     int c;
@@ -232,7 +196,7 @@ void collectHeaderInfo(Node *node, HeaderInfo **arr, int *count, int *capacity) 
         
         // Calculate how many bytes we need to pack the code bits.
         int numBytes = (info->codeLen + 7) / 8;
-        info->recordSize = 1 + 2 + 1 + numBytes;  // 1 byte for char, 2 for nextOffset, 1 for codeLen, plus code bytes.
+        info->recordSize = 1 + 2 + 1 + numBytes;  
         
         // Pack the code (a string of '0' and '1') into bytes.
         memset(info->codeData, 0, sizeof(info->codeData));
@@ -259,8 +223,7 @@ void collectHeaderInfo(Node *node, HeaderInfo **arr, int *count, int *capacity) 
     if (node->right) collectHeaderInfo(node->right, arr, count, capacity);
 }
 
-// This function writes the header records to the binary file.
-// It should be called before writeFile(). 
+/* This function writes the header records to the binary file. */
 int writeHeader(const char *fileName, Node *root) {
     int capacity = 10, count = 0;
     HeaderInfo *headers = malloc(capacity * sizeof(HeaderInfo));
@@ -328,7 +291,7 @@ int writeHeader(const char *fileName, Node *root) {
 
 /* Write into new file */
 int writeFile(const char *fileName, Node *node){
-    FILE *readFile  = fopen(fileName, "rb"); // binary mode again
+    FILE *readFile  = fopen(fileName, "rb"); 
     FILE *writeFile = fopen("compressedFile.db", "ab");
     if (!readFile || !writeFile) {
         if (readFile) fclose(readFile);
@@ -404,10 +367,10 @@ static void freeTrie(DecodeNode *root) {
     free(root);
 }
 
-// --- Compression pipeline ---
+/* Compression pipeline */
 int compressFile(const char *inputFile) {
     int status;
-    // 1) Read & count
+    // Read & count
     Node *nodes = malloc(sizeof(Node));
     if (!nodes) return -1;
     nodes[0].character = ' ';
@@ -417,22 +380,22 @@ int compressFile(const char *inputFile) {
     status = readFile(inputFile, &nodes, &charCount);
     if (status < 0) { free(nodes); return -1; }
 
-    // 2) Build Huffman tree
+    // Build Huffman tree
     status = huffmanTree(&nodes, charCount);
     if (status < 0) { free(nodes); return -1; }
 
-    // 3) Assign codes
+    // Assign codes
     char **codes = NULL;
     char *characters = NULL;
     int size = 0;
     nodes->bits[0] = '\0';
     assignBit(nodes, &codes, &characters, &size);
 
-    // 4) Write header + compressed data
+    // Write header + compressed data
     if (writeHeader("compressedFile.db", nodes) < 0) { }
     if (writeFile(inputFile, nodes) < 0) { }
 
-    // 5) Cleanup
+    // Cleanup
     for (int i = 0; i < size; i++) free(codes[i]);
     free(codes);
     free(characters);
@@ -440,13 +403,13 @@ int compressFile(const char *inputFile) {
     return 0;
 }
 
-// --- Decompression pipeline ---
+/* Decompression pipeline */
 int decompressFile(const char *inFile, const char *outFile) {
     FILE *in  = fopen(inFile,  "rb");
     FILE *out = fopen(outFile, "w");
     if (!in || !out) { perror("File open"); return -1; }
 
-    // 1) Read header
+    // Read header
     size_t cap = 8, cnt = 0;
     HeaderInfo *hdr = malloc(cap * sizeof *hdr);
     if (!hdr) { fclose(in); fclose(out); return -1; }
@@ -465,14 +428,14 @@ int decompressFile(const char *inFile, const char *outFile) {
         if (hdr[cnt-1].nextOffset == 0) break;
     }
 
-    // 2) Build decode trie
+    // Build decode trie
     DecodeNode *root = createNode();
     for (size_t i = 0; i < cnt; i++) {
         insertCode(root, hdr[i].codeData, hdr[i].codeLen, hdr[i].character);
     }
     free(hdr);
 
-    // 3) Decode bitstream
+    // Decode bitstream
     unsigned char buffer;
     DecodeNode *cur = root;
     while (fread(&buffer,1,1,in)==1) {
@@ -487,7 +450,7 @@ int decompressFile(const char *inFile, const char *outFile) {
         }
     }
 
-    // 4) Cleanup
+    // Cleanup
     freeTrie(root);
     fclose(in);
     fclose(out);
